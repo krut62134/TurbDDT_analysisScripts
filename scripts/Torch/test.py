@@ -15,10 +15,10 @@ def get_data(file):
     data.sort_values(by = [11], ascending = True, inplace = True)
     return data, df, r_s[1][1] # returns the dataframe of particle fields and time of the particle file.
 
-file = "./data/tDDT_hdf5_part_001516"
+file = "/scratch/workspace/kpatel29_umassd_edu-run_derefine_test/runs/run_derefine_mpc_split/tDDT_hdf5_part_002061"
 print_data=get_data(file)
 print(get_data(file))
-print(print_data[0].to_string())
+#print(print_data[0].to_string())
 
 
 
