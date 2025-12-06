@@ -1,8 +1,9 @@
 #################################################################################################
 # This script will create input string for SuperNu                                              #
+# Only includes data conversion for 3D Cartesian to 1D Spherical                                #
 # - Uses ALL elements found in out_<tag>_elemental.dat, preserving their on-disk order          #
 # - Appends isotopes (ni56, co56, fe52, mn52, cr48, v48) at the end from out_<tag>_final.dat    #
-# - Columns: vel_right  total_mass  <elements...>  ni56  co56  fe52  mn52  cr48  v48            #
+# - Columns: rightvel  mass  <elements...>  ni56  co56  fe52  mn52  cr48  v48                   #
 # Make sure to provide correct paths for final particle file from the FLASH run,                #
 #  the elemental data directory, and source of Torch run. Also double check your                #
 #  mass of the ejecta and the totle number of particles                                         #
@@ -18,20 +19,20 @@ import h5py
 from mpi4py import MPI
 
 # ---------- CONFIG ----------
-particle_file = "./../../tDDT_sd_o12r32_hdf5_part_006692"
+particle_file = "./../../../tDDT_hdf5_part_001727"
 
 # Dir with per-particle elemental files (2 cols: iso frac), e.g. out_<tag>_elemental.dat
 elem_dir  = Path("./elemental/")
 
 # Dir with original isotopic files (4 cols: Z A frac iso), e.g. out_<tag>_final.dat
-final_dir = Path("./../src/")
+final_dir = Path("./../../src/")
 
 out_file  = "input.str"
-nbins     = 256     #decide number of bins based on your needs, change it in input.par as well
+nbins     = 128     #decide number of bins based on your needs, change it in input.par as well
 
-M_total       = np.float64(2.744859152529676297E+33)    # your mass of the ejecta
-N_particles   = np.int64(99872)     # total particles in your simulation
-m_per_particle = M_total / np.float64(N_particles)   # float64 throughout
+M_total       = np.float64(2.744761448504379376E+33)    # your mass of the ejecta
+N_particles   = np.int64(99884)     # total particles in your simulation
+m_per_particle = M_total / np.float64(N_particles)   #
 
 # extra isotopes to append (exact labels in _final.dat, lowercase)
 EXTRA_ISOS = ["ni56", "co56", "fe52", "mn52", "cr48", "v48"]
@@ -46,12 +47,18 @@ if rank == 0:
     with h5py.File(particle_file, "r") as f:
         arr = f["tracer particles"][:]
     df = pd.DataFrame(arr, dtype=np.float64).sort_values(by=[11], ascending=True)
-    velx = df.iloc[:,14].to_numpy(dtype=np.float64)
-    vely = df.iloc[:,15].to_numpy(dtype=np.float64)
-    velz = df.iloc[:,16].to_numpy(dtype=np.float64)
-    tag  = df.iloc[:,11].to_numpy(dtype=np.int64)
-    speed = np.sqrt(velx*velx + vely*vely + velz*velz, dtype=np.float64)
-    vmin, vmax = float(speed.min()), float(speed.max())
+    x = df.iloc[:,2].to_numpy(dtype=np.float64)
+    y = df.iloc[:,3].to_numpy(dtype=np.float64)
+    z = df.iloc[:,4].to_numpy(dtype=np.float64)
+    r = np.sqrt(x*x + y*y + z*z, dtype=np.float64)
+    velx = df.iloc[:,9].to_numpy(dtype=np.float64)
+    vely = df.iloc[:,10].to_numpy(dtype=np.float64)
+    velz = df.iloc[:,11].to_numpy(dtype=np.float64)
+    tag  = df.iloc[:,7].to_numpy(dtype=np.int64)
+    speed = (x*velx + y*vely + z*velz) / r
+    #speed = np.sqrt(velx*velx + vely*vely + velz*velz, dtype=np.float64)
+    vmin = 0.0
+    vmax = float(speed.max())
 else:
     speed = None
     tag   = None
@@ -168,7 +175,7 @@ if rank == 0:
             extra_mat[b, :] = extra_vec
 
     # Assemble DataFrame (float64 in memory)
-    out_df = pd.DataFrame({"vel_right": vel_col, "total_mass": mass_col})
+    out_df = pd.DataFrame({"rightvel": vel_col, "mass": mass_col})
     out_df = pd.concat([out_df, elem_mat], axis=1)
     # Append extra isotopes strictly at the end
     extra_df = pd.DataFrame(extra_mat, columns=EXTRA_ISOS)
@@ -181,5 +188,14 @@ if rank == 0:
 
     # ---- WRITE in float32 (single precision) ----
     out_df = out_df.astype(np.float32, copy=False)
-    out_df.to_csv(out_file, sep="\t", index=False, header=True, float_format="%.7E")
+#    out_df.to_csv(out_file, sep="\t", index=False, header=True, float_format="%.7E")
+    num_cols = len(out_df.columns)
+    header_line_2 = f"# {nbins} 1 1 {num_cols} {num_cols - 2}\n"
+    header_line_3 = "# " + "\t".join(out_df.columns) + "\n"
 
+    # Write all lines to file
+    with open(out_file, "w") as f:
+        f.write("#\n")
+        f.write(header_line_2)
+        f.write(header_line_3)
+        out_df.to_csv(f, sep="\t", index=False, header=False, float_format="%.7E")
