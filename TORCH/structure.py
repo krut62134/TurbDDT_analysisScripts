@@ -89,6 +89,7 @@ if rank == 0:
     plt.xlabel('Radial Velocity (km/s)')
     plt.ylabel('Isotope Mass Fraction')
     plt.title(r'tDDT - high central density (6 x 10**9 g/cm**3) ejecta structure')
+    plt.ylim(1e-5,1)
     plt.legend(loc='lower right', fontsize=10)
     plt.grid(True)
     plt.tight_layout()
