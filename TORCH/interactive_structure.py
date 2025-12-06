@@ -183,7 +183,7 @@ if rank == 0:
     )]
     # 5. Update layout
     fig.update_layout(
-        title='tDDT: low central density model (1x10<sup>9</sup> g/cm<sup>3</sup>)',
+        title='tDDT: high central density model (6x10<sup>9</sup> g/cm<sup>3</sup>)',
         showlegend=False,  # <-- ADD THIS LINE
         scene=dict(
             xaxis=dict(
@@ -230,5 +230,5 @@ if rank == 0:
         ]
     )
 
-    fig.write_html('structure_3d_LCD_opacity.html')
+    fig.write_html('structure_3d_HCD_opacity.html')
     print("3D plot saved to velocity_space_3d_radius_opacity.html")
