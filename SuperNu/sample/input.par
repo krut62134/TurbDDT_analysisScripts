@@ -33,9 +33,9 @@
  in_grp_ng = 1600
 
 !-- particle numbers
- in_src_n2sinit = 25
- in_src_n2s = 25
- in_prt_n2max = 32 !17 !2**7 times bigger than ns
+ in_src_n2sinit = 23
+ in_src_n2s = 23
+ in_prt_n2max = 30 !17 !2**7 times bigger than ns
 
 !-- imc tally method
  in_trn_isimcanlog = f
