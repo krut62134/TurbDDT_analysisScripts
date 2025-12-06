@@ -2,6 +2,7 @@
 # This script converts final isotopic abundances from TORCH to elemental abundances     #
 # Provide the correct path to source of Torch and a directory where you want to         #
 #  save the elemental mass fractions                                                    #
+# Does not include lost particles                                                       #
 #   ~krut patel 091525                                                                  #
 #########################################################################################
 from pathlib import Path
