@@ -29,10 +29,10 @@ for f in files:
     proc_tag.append(s[0])
 
 left_tag = []  # To store unprocessed particle tags
-
+total_particles = 100052    #edit here for total particles
 # Open in write mode if you want to overwrite any previous data
 with open('left_tags.dat', 'w') as f:
-    for i in range(1, 100024):      #edit here for total particles
+    for i in range(1, total_particles + 1):
         if str(i) in proc_tag:
             continue
         else:
