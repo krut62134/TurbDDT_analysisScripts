@@ -20,7 +20,7 @@ This repository contains some additional modifications in the torch source code 
 - line 251: `tol = 1.0d-5`
 - line 23412: `temp = max(5.0d8,min(temp,2.0d10))`
 
-The first change was made after doing a convergence study on the TORCH yields. The study can be found in `TORCH/convergence` in this repo. The second change is specifically for the single degenerate model, where temperatures can reach higher than 1 x 10^9 K. At such high temperatures, the TORCH calculations become invalid. Temperatures near 1 x 10^9 K are enough to reach nuclear statistical equilibrium before the ejecta cools down, even for our highest central density progenitor. This change adds a ceiling to the temperature. This change adds a ceiling to the temperature values.
+The first change was made after doing a convergence study on the TORCH yields. The study can be found in `TORCH/convergence` in this repo. The second change is specifically for the single degenerate model, where temperatures can reach higher than 1 x 10^9 K. At such high temperatures, the TORCH calculations become invalid. Temperatures near 1 x 10^9 K are enough to reach nuclear statistical equilibrium (NSE) before the ejecta cools down, even for our highest central density progenitor. This change adds a ceiling to the temperature. This change adds a ceiling to the temperature values.
 
 File structure:
 
@@ -88,12 +88,13 @@ After all the trajectories are processed, you will have `out_<tag>_final.dat` fi
 Use the `average.py` script to calculate the total final yields, which simply calculates the average yields from all the trajectories and outputs the data in the `meanAbundances.dat` file. Change the path for the final TORCH output to your TORCH run, and change the total mass of your ejecta to get accurate calculations in solar mass. Run the script with the following command:
 
 ```bash
-mpirun -n <total processes> average.py
+mpirun -n <total processes> python3 average.py
 ```
 
 There are multiple ways you can visualize the ejecta structure. The most common method is to plot a 1D structure. You can use the `structure.py` script for that. It converts the ejecta from 3D Cartesian space into 1D Spherical space, and then maps it into a velocity mesh. Before using this script, make sure you have provided the correct paths for your final particle file from FLASH simulation, and your TORCH run for that simulation. Also adjust the column indices for position x, y, z; velocity vx, vy, vz and the particle tag. Choose the isotopes you want to plot by adding them in the isotopes array. This is also an MPI script, so make sure you use mpirun to execute it.
 
-<A sample image of the 1d structure plot with a description>
+![Alt text](./misc/tDDT_1D_structure.png)
+*Figure 1: The plot above is for a standard central density progenitor. This is the simplest and most compact way to visualise the ejecta structure. Since the ejecta has reached free expansion, we can analyse the position of the products of the explosion from its radial velocity. As seen in the plot, we can clearly see a Ni56 hole within the core, dominated by the stable iron group elements (IGEs). These are the products of high neutronization inside the core of the White Dwarf due to high density burning. We see most of the ejecta beyond that is heavily dominated by Ni56, the most abundant products of NSE. This particular isotope is responsible for the bright nature of the SNe Ia. The final layer of the ejecta are the products of Quasi-Statistical Equilibrium (QSE) and unburnt C/O. We can also see a faint layer of Ca40 between the Ni56 and Si28.*
 
 Another way to visualize the structure is to plot it in 3D. You can use the `interactive_structure.py` script for that. This script outputs an HTML file containing an interactive plot of all the particles in a 3D velocity space. The plot contains IGEs, unburnt C/O, and IMEs in RGB fashion, and ni56 > 0.5 in strict white. So brown, for example, would mean the particle has mostly IGEs and some unburnt C/O. Again, before running the script, make sure your paths for the final particle file from the FLASH simulation and the corresponding TORCH run are correct. Also, change the column index for velocities and tag according to your data. This script is also executed with mpirun.
 
