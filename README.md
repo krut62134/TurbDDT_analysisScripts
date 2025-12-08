@@ -2,12 +2,51 @@
 
 This repository contains the scripts for analysis and post-processing of the SNIa_turbDDT project. Refer to the documentation below for the post-processing workflow.
 
-## FLASH run analysis
+## FLASH
 
+There are three progenitor models provided as of now in the turbDDT simulation directory of the flash43 repo. All three models are extensively tested for hydrostatic equilibrium. For all 3 progenitors, the virial theorem is noticed to be below 1×10<sup>-6</sup> at least for the first second, which is way past the detonation time for any tDDT ignition configuration. To know more on how to set-up the simulation and the information on available parameters for the tDDT model, read RUNS.txt provided in the simulation directory.
+
+For job submission, 2 bash scripts are provided in the FLASH directory of this repo, `job.sh` and `jobWatchdog.sh`. I have noticed that the ibrun wrapper on Stampede3 sometimes does not allocate all the resources available to run the simulation; part of the resources are wasted being idle. I use the extended `mpiexec` command as described below to run my simulations. I have also noticed that the jobs on Stampede3 sometimes abruptly halt, and do not gracefully exit the job, wasting all the resources from that point onwards. I have implemented a watchdog on the particle file generation, as it is the most frequent part of I/O for our simulations. 1 thread at all times is assigned for the watchdog, and if any new particle file is not generated for 10 minutes, the watchdog cancels the job, saving resources. Although, after the Nov 2025 update, Stampede3 is much more stable than before, but I would recommend using the `jobWatchdog.sh` script on Stampede3.
+```bash
+scontrol show hostnames $HOSTLIST > hosts.txt
+mpiexec -f hosts.txt -n <total number of processes> -ppn <processes per node> ./flash4
+```
+The first part of the command saves the list of allocated nodes in the hosts.txt file. The second command uses that file to execute the flash4 executable. You absolutely need to make sure that the -n and -ppn flags are set properly based on your node configurations for this to work. For Unity, you do not need this extended command. You can simply use `mpirun ./flash4`.
+
+If you are running the jobs on interactive mode, you won't have the usual output or error file. To save the logs in that case, add the following lines after your exicutable.
+```bash
+... ./flash4 2>&1 | tee -a output.o
+```
+ 
+### Simulation Analysis
+
+There are a number of analysis you can do on the simulation depending on your model, but the most common ones are looking at the important global quentities and the slice plots of key variables. To plot the combined evolution of the global quentities, you can use the global_quentities.py script. You will need to provide the correct path to your simulation's .dat file that saves the global quentities. Bellow is an example of some of the intresting quentities. Feel free to add more quentities in the script based on your needs.
+<p align="center">
+   <img src="./misc/global_quentities.png" alt="Alt text">
+</p>
+*Figure 1:*
+<br>
+
+The sliceplots_mpi.py script can be used to plot any plot file variables in a single image. You can simply write your plotting variables in the fields string and define the zoom settings you want for them using the width and widthLrat variable. If you add a new field, I would suggest you to add it in the configuration loop with your desired colormap and range if it's not already there, else yt will take care of it automatically by assigining the plain old viridis colormap with the maximum and minimum values available from the grid. Make sure to change the file path for to simulation's plt_cnt files. An example is provided bellow. Use the script with the following command.
+```bash
+mpirun -n <number of processees python3 sliceplots_mpi.py>
+```
+<p align="center">
+   <img src="./misc/tDDT_hd_o12r32_HLLC_Roe_hdf5_plt_cnt_000077_combined.png" alt="Alt text">
+</p>
+*Figure 2: These are some slice plots on the y-z plane for the standard central density progenitor with 100 ignition point. The plot is at the onset of detonation at t = 0.3951 s after igniton. The top row is temperature, density and pressure zoomed in to show the full star, and the bottom row is length scale ratio L/L<sub>CJ</sub>, flame progress variable, and specific nuclear energy generation focused to show the turbulent flam. Based on the turbulent deflegration to detonation model, a successful detonation is achieved when the length scale ratio becomes greater then 1 within the thin flam front ( 1 x 10<sup>-3</sup> < flam < 1 x 10<sup>-2</sup> ).*
+<br>
+
+Before moving forward to calculating the nucleosynthic yields using the TORCH code, you need to make sure that you ejecta is in free expansion. At this stage the radius (r) of any particle of the ejecta and its radial velocity ((v<sub>r</sub>) are propotional to each other. Meaning at any radius (r), (v<sub>r</sub>/r is a constant (s<sup>-1</sup>), sometimes refered to as the Hubble constant. You can confirm this using the vr_vs_r.py script. The script will calculate a quentity delta, defined as the standard daviation of v<sub>r</sub>/r normalised by the mean of v<sub>r</sub>/r, (Δ = σ(v<sub>r</sub>/r) / μ(v<sub>r</sub>/r)). Consider the ejecta to be in free expansion if Δ is < 0.01. I have noticed that about 2.5 s post explosion, the simulation reaches free expansion. 
+The script will also generate two plots, as given bellow. This calculation id done using the final particle file from your FLASH simulation. Before using the script, make sure you provide the correct path for it, and the correct column index for position x, y, z, and velocities in x, y, z direction.
+<p align="center">
+   <img src="./misc/vr_vs_r_combined.png" alt="Alt text">
+</p>
+*Figure 3: The left plot is a scatter plot of v<sub>r</sub> vs r. It can be observed that the scatter plot draws a straight line in the v<sub>r</sub> vs r, representing that the radius is propotional to radial velocity. The delta variable being bellow 0.01 is an indication of that. The second plot shows the distribution of v<sub>r</sub>/r accross particles. The verticle dashed line represents the mean v<sub>r</sub>/r*
 
 ## TORCH
 
-### Post-processing workflow
+### Post-processing Workflow
 
 After the supernova ejecta has reached homologous expansion, follow the workflow below to calculate the nucleosynthetic yields and the synthetic spectra.
 
@@ -33,14 +72,14 @@ TORCH/
 
 ### 1. Trajectory Generation
 
-First, create a new folder in the TORCH directory named `history`. Copy the `create_traj.py` script into this history directory.
+First, create a new directory in the TORCH directory named `history`. Copy the `create_traj.py` script into this history directory.
 
-Before running the script, you must update it to match your simulation data:
+The particles files from your FLASH simulation consists the data from your constant mass Lagrangian tracer particles. These particles simplly tracks the evolution of temperature, density, pressure, and some other quentities like Y_e fraction, flame progress variabl, etc. It also has the location and velocity of the particle in the 3D Cartesian grid and the tags of each particle. The tag of the particle never change during the simulation. You can use it if you need to analyse individual particles. Before running the script, you must update it to match your simulation data:
 
-- Change the path of the particle file to point to your FLASH simulation's final particle file.
-- Update the column indices for temperature, density, and particle tag to match your particle file structure.
+- Change the path of the particle file to point to your FLASH simulation's **final particle file**.
+- Update the column indices for **temperature, density, and particle tag** to match your particle file structure.
 
-**Tip:** You can use the `test.py` script to check the structure of your particle file.
+**Tip:** You can use the `test.py` script to check the structure of your particle files and its contents.
 
 Once configured, run the script:
 
@@ -48,7 +87,7 @@ Once configured, run the script:
 python3 create_traj.py
 ```
 
-This is a serial code that reads all particle files and writes the temperature and density trajectories. The process should not take longer than 2 hours.
+This is a serial code that reads all particle files and writes the temperature and density trajectories. The trajectories will be named after the tags of the particles. So if you have say 100000 particles, you should have 100000 trajectories. The process should not take longer than 2 hours.
 
 **Note:** If you encounter memory issues, use the `create_traj_mpi_restartable.py` script instead. You will need to update the column indices and file paths in this script as well. Execute it using the number of processes available to you. You can also increase the number of nodes to increase memory. 
 
@@ -90,18 +129,35 @@ Use the `average.py` script to calculate the total final yields, which simply ca
 ```bash
 mpirun -n <total processes> python3 average.py
 ```
+<br>
 
-- There are multiple ways you can visualize the ejecta structure. The most common method is to plot the mass fraction of indicidual isotopes against radial velocity. You can use the `structure.py` script for that. It converts the ejecta from 3D Cartesian space into 1D Spherical space, and then maps it into a velocity mesh, which allow us to clearly analyse the stratification of the ejecta. Before using this script, make sure you have provided the correct paths for your final particle file from FLASH simulation, and your TORCH run for that simulation. Also adjust the column indices for position x, y, z; velocity vx, vy, vz and the particle tag. Choose the isotopes you want to plot by adding them in the isotopes array. This is also an MPI script, so make sure you use mpirun to execute it.
+- There are multiple ways you can visualize the ejecta structure. The most common method is to plot the mass fraction of indicidual isotopes against radial velocity. You can use the `structure.py` script for that. It converts the ejecta from 3D Cartesian space into 1D Spherical space, and then maps it into a velocity mesh, which allow us to clearly analyse the stratification of the ejecta. Before using this script, make sure you have provided the correct paths for your final particle file from FLASH simulation, and your TORCH run for that simulation. Also adjust the column indices for position x, y, z; velocity vx, vy, vz and the particle tag. Choose the isotopes you want to plot by adding them in the isotopes array. Exicute the script using the following command.
 
-<img src="./misc/tDDT_1D_structure.png" alt="Alt text" width="600">
-*Figure 1: The plot above is for a standard central density progenitor. This is the simplest and most compact way to visualise the ejecta structure. Since the ejecta has reached free expansion, we can analyse the position of the products of the explosion from its radial velocity. As seen in the plot, we can clearly see a Ni56 hole inside the core, dominated by the stable iron group elements (IGEs) (orange and pink curve below 5000 km/s) and some trace of Mn55 (green curve). These are the products of high neutronization due to sufficient electron capture inside the core of the White Dwarf. This happens because of high density (>1×10⁹ g/cm³) nuclear burning. Beyond the core of the White Dwarf, in the low-density environments (1×10⁹ to 1×10⁸ g/cm³), electron capture is negligible, and the resulting nucleosynthesis is dominated almost exclusively by Ni56 (blue curve between 5000 km/s to 20000 km/s), the most abundant products of NSE. This particular isotope is responsible for the bright nature of the SNe Ia. The final layer of the ejecta are intermediate mass elements (IMEs) like Si28 and S32 (red and purple curve above 20000 km/s), which are the products of Quasi-Statistical Equilibrium (QSE) or incomplete burning in lower density material (<1.2×10⁷ g/cm³), and unburnt C/O. We can also see a faint layer of Ca40 (brown curve) between the Ni56 and Si28.*
+```bash
+mpirun -n <total processes> python3 structure.py
+```
 
-- You can also use the `2D_cylindrical_structure.py` script to visualise the structure. This script plot IGEs, unburnt C/O, and IMEs in RGB fashion, and ni56 > 0.5 in strict white, so brown, for example, would mean the particle has mostly IGEs and some unburnt C/O. This is a more visually appealing approach as the plot is in a 2D cylendrical velocity space. The x-axis is radial velocity and y-axis is the velocity in z direction.
+<p align="center">
+   <img src="./misc/tDDT_1D_structure.png" alt="Alt text" width="400">
+</p>
+*Figure 4: The plot above is for a standard central density progenitor. This is the simplest and most effective way to visualise the ejecta structure. Since the ejecta has reached free expansion, we can analyse the position of the products of the explosion from its radial velocity. As seen in the plot, we can clearly see a Ni56 hole inside the core, dominated by the stable iron group elements (IGEs) (orange and pink curve below 5000 km/s) and some trace of Mn55 (green curve). These are the products of high neutronization due to sufficient electron capture inside the core of the White Dwarf. This happens because of high density (>1×10⁹ g/cm³) nuclear burning. Beyond the core of the White Dwarf, in the low-density environments (1×10⁹ to 1×10⁸ g/cm³), electron capture is negligible, and the resulting nucleosynthesis is dominated almost exclusively by Ni56 (blue curve between 5000 km/s to 20000 km/s), the most abundant products of NSE. This particular isotope is responsible for the bright nature of the SNe Ia. The final layer of the ejecta are intermediate mass elements (IMEs) like Si28 and S32 (red and purple curve above 20000 km/s), which are the products of Quasi-Statistical Equilibrium (QSE) or incomplete burning in lower density material (<1.2×10⁷ g/cm³), and unburnt C/O. We can also see a faint layer of Ca40 (brown curve) between the Ni56 and Si28.*
+<br>
 
-<img src="./misc/tDDT_2D_structure_cyl_rgb.png" alt="Alt text" width="600">
-*Figure 1: The Lagrandian tracer particles are plotted here in 2D cylindrical velocity space, color coded with the abudance of different isotopes. You can clearly see the core of the ejecta dominated by stable IGEs (red), then for the most part radioactive Ni56 (white), and the outermost layer dominated by IMEs line Si28 and S32 (blue) with some trace of unburnet fuel (green).*
+- You can also use the `2D_cylindrical_structure.py` script to visualise the structure. This script plot IGEs, unburnt C/O, and IMEs in RGB fashion, and ni56 > 0.5 in strict white, so brown, for example, would mean the particle has mostly IGEs and some unburnt C/O. This is a more visually appealing approach as the plot is in a 2D cylendrical velocity space. The x-axis is radial velocity and y-axis is the velocity in z direction. Again, make sure you have provided the correct paths for your final particle file from FLASH simulation, and your TORCH run for that simulation. Also adjust the column indices for position x, y, z; velocity vx, vy, vz and the particle tag. Choose the isotopes you want to plot by adding them in the isotopes array. Exicute the script using the following command.
 
-- Another way to visualize the structure is to plot it in 3D. You can use the `interactive_structure.py` script for that. This script outputs an HTML file containing an interactive plot of all the particles in a 3D velocity space. The plot contains IGEs, unburnt C/O, and IMEs in RGB fashion, and ni56 > 0.5 in strict white. So brown, for example, would mean the particle has mostly IGEs and some unburnt C/O. Again, before running the script, make sure your paths for the final particle file from the FLASH simulation and the corresponding TORCH run are correct. Also, change the column index for velocities and tag according to your data. This script is also executed with mpirun.
+```bash
+mpirun -n <total processes> python3 2D_cylindrical_structure.py
+```
+<p align="center">
+   <img src="./misc/tDDT_2D_structure_cyl_rgb.png" alt="Alt text" width="400">
+</p>
+*Figure 5: This is the scatter plot of all the 100000 Lagrandian tracer particles are in 2D cylindrical velocity space, color coded with the abudance of different isotopes. You can clearly see the core of the ejecta dominated by stable IGEs (red), then for the most part radioactive Ni56 (white), and the outermost layer dominated by IMEs line Si28 and S32 (blue) with some trace of unburnet fuel (green).*
+<br>
+
+- An alternative to the 2D cylindrical plot is to visualize the structure in an interative 3D plot. You can use the `interactive_structure.py` script for that. This script outputs an HTML file containing an interactive plot of all the particles in a 3D velocity space. Similar to the 2D cylindrical plot, this plot contains IGEs, unburnt C/O, and IMEs in RGB fashion, and ni56 > 0.5 in strict white. Before running the script, make sure your paths for the final particle file from the FLASH simulation and the corresponding TORCH run are correct. Also, change the column index for velocities and tag according to your data. This script is also executed with mpirun.
+```bash
+mpirun -n <total processes> python3 interactive_structure.py
+```
 
 <a plot showing sample 3D structure plot with description.>
 
